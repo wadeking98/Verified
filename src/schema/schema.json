@@ -1,0 +1,8 @@
+{
+    "attributes": [
+        "username",
+        "expiry_date"
+    ],
+    "name": "Login Credential",
+    "version": "1.0"
+}
