@@ -1,26 +1,43 @@
-import { initAgent, initServer, register } from './helpers/helpers'
-import { issuerConfig } from './issuer/issuer'
-import { verifierConfig } from './verifier/verifier'
-import * as schema from './schema/schema.json'
+import * as dotenv from 'dotenv'
+
+dotenv.config()
+
+import { createCredentialInvitation, createProofInvitation, initAgent, register } from './helpers/helpers'
+import { agentConfig } from './agent/agent'
+import * as schemaTemplate from './schema/schema.json'
+import * as express from 'express'
+import { startServer } from '@aries-framework/rest'
 
 
 
 
 
 const start = async () => {
+
     // init agents
+    const agent = await initAgent(agentConfig, (process.env.INBOUND_PORT as unknown as number) ?? 5000)
+    const { credDef } = await register(agent, schemaTemplate)
 
-    const issuer = await initAgent(issuerConfig, 5000)
-    const verifier = await initAgent(verifierConfig, 5001)
+    // initialize static invites
+    const credentialInvite = await createCredentialInvitation(agent, credDef)
+    const credentialInviteUrl = credentialInvite.outOfBandInvitation.toUrl({ domain: process.env.ENDPOINT_URL ?? "" })
 
-    await register(issuer, schema)
+    const proofInvite = await createProofInvitation(agent, credDef)
+    const proofInviteUrl = proofInvite.outOfBandInvitation.toUrl({ domain: process.env.ENDPOINT_URL ?? "" })
+
+    const app = express()
+
+    app.get('/requestCredential', async (req, res) => {
+        res.send(credentialInviteUrl)
+    })
+
+    app.get('/requestProof', async (req, res) => {
+        res.send(proofInviteUrl)
+    })
 
 
-    console.log("Starting issuer server...")
-    initServer(issuer, 8282)
+    startServer(agent, { port: 8282, app })
 
-    console.log("Starting verifier server...")
-    initServer(verifier, 8383)
 }
 
 start()
