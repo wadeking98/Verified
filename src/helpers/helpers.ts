@@ -14,6 +14,8 @@ import {
 } from '@aries-framework/core'
 import { agentDependencies, HttpInboundTransport } from '@aries-framework/node'
 import * as schemaTemplate from '../schema/schema.json'
+import * as jwt from 'jsonwebtoken'
+import * as ws from 'ws'
 
 export const initAgent = async (config: InitConfig, inPort: number) => {
 
@@ -50,19 +52,19 @@ const schemaID = (schema: typeof schemaTemplate, did: string): string => {
     return `${did}:2:${schema.name}:${schema.version}`
 }
 
-export const createCredentialInvitation = async (agent: Agent, credDef: string) => {
+export const createCredentialInvitation = async (agent: Agent, credDef: string, soc?: ws) => {
     const oob = await agent.oob.createInvitation({ handshake: true, handshakeProtocols: [HandshakeProtocol.Connections], multiUseInvitation: true, autoAcceptConnection: true })
-    setupConnectionListener(agent, oob, (connId) => { issueCredential(agent, credDef, connId) })
+    setupConnectionListener(agent, oob, (connId) => { issueCredential(agent, credDef, connId, soc) })
     return oob
 }
 
-export const createProofInvitation = async (agent: Agent, credDef: string) => {
+export const createProofInvitation = async (agent: Agent, credDef: string, soc?: ws) => {
     const oob = await agent.oob.createInvitation({ handshake: true, handshakeProtocols: [HandshakeProtocol.Connections], multiUseInvitation: true, autoAcceptConnection: true })
-    setupConnectionListener(agent, oob, (connId) => { issueProof(agent, credDef, connId) })
+    setupConnectionListener(agent, oob, (connId) => { issueProof(agent, credDef, connId, soc) })
     return oob
 }
 
-const issueProof = async (agent: Agent, credDef: string, connId: string): Promise<ProofRecord> => {
+const issueProof = async (agent: Agent, credDef: string, connId: string, soc?: ws) => {
     console.log(`Requesting proof from connection: ${connId}`)
     const proofRecord = await agent.proofs.requestProof(connId, {
         requestedAttributes: {
@@ -72,26 +74,57 @@ const issueProof = async (agent: Agent, credDef: string, connId: string): Promis
             }
         },
     })
-    console.log(proofRecord.id)
-    return proofRecord
+    soc?.send(JSON.stringify({ proofId: proofRecord.id }))
 }
 
-const issueCredential = async (agent: Agent, credDef: string, connId: string) => {
+export const getProofStatus = async (agent: Agent, proofRecordId: string): Promise<string> => {
+    const proofRecord = await agent.proofs.getById(proofRecordId)
+    if (proofRecord && proofRecord.isVerified) {
+        const b64Data = proofRecord.presentationMessage?.presentationAttachments?.[0].data?.base64
+        if (b64Data) {
+            const text = Buffer.from(b64Data, 'base64').toString('utf-8')
+            const dataObj = JSON.parse(text)
+            return dataObj.requested_proof.revealed_attrs.group1.raw
+        }
+    }
+    return ""
+}
+
+export const getCredStatus = async (agent: Agent, credExchangeId: string): Promise<string> => {
+    const credRecord = await agent.credentials.getById(credExchangeId)
+    if (credRecord) {
+        return credRecord.state
+    }
+    return ""
+}
+
+export const signJWT = (jwtKey: string, cred: { username: string }): string => {
+    const token = jwt.sign(cred, jwtKey, { expiresIn: "24h" })
+    return token
+}
+
+export const verifyJWT = (jwtKey: string, jwtToken: string) => {
+    const token = jwt.verify(jwtToken, jwtKey)
+    return token as jwt.JwtPayload
+}
+
+const issueCredential = async (agent: Agent, credDef: string, connId: string, soc?: ws) => {
     console.log(`Issuing credential to connection: ${connId}`)
-    agent.credentials.offerCredential({
+    const credentialRecord = agent.credentials.offerCredential({
         protocolVersion: 'v1',
         connectionId: connId,
         credentialFormats: {
             indy: {
                 credentialDefinitionId: credDef,
                 attributes: [
-                    { name: 'username', value: 'nobody' },
+                    { name: 'username', value: 'guest' },
                     { name: 'expiry_date', value: '' }
                 ]
             }
         },
         autoAcceptCredential: AutoAcceptCredential.Always
     })
+    soc?.send(JSON.stringify({ credId: (await credentialRecord).id }))
 }
 
 const setupConnectionListener = (agent: Agent, outOfBandRecord: OutOfBandRecord, cb: (...args: any) => void) => {

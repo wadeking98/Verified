@@ -1,0 +1,23 @@
+[
+  {
+    "name": "portal",
+    "path": "/portal",
+    "component": "/home/tofurky/Documents/Verified/src/frontend/verified/pages/portal.vue",
+    "chunkName": "pages/portal",
+    "_name": "_d6be9d78"
+  },
+  {
+    "name": "proof",
+    "path": "/proof",
+    "component": "/home/tofurky/Documents/Verified/src/frontend/verified/pages/proof.vue",
+    "chunkName": "pages/proof",
+    "_name": "_00ba259c"
+  },
+  {
+    "name": "index",
+    "path": "/",
+    "component": "/home/tofurky/Documents/Verified/src/frontend/verified/pages/index.vue",
+    "chunkName": "pages/index",
+    "_name": "_0541e3ac"
+  }
+]
